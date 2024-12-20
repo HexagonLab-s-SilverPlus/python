@@ -1,0 +1,70 @@
+# Python 관련
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 환경 설정 파일
+.env
+*.env
+
+# IDE/에디터 관련
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Flask 관련
+instance/
+*.sqlite3
+*.db
+*.log
+
+# 가상 환경
+.venv/
+env/
+venv/
+
+# 배포 관련
+*.pot
+*.mo
+*.pyc
+
+# 테스트/커버리지 관련
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.out
+*.err
+
+# 빌드/배포 관련
+build/
+dist/
+*.egg-info/
+.eggs/
+*.manifest
+*.spec
+pip-wheel-metadata/
+
+# 패키지 매니저
+*.lock
+poetry.lock
+Pipfile.lock
+
+# Docker 관련
+docker-compose.override.yml
+
+# 기타 OS 관련
+.DS_Store
+Thumbs.db
+*.bak
+
+# 추가로 제외하고 싶은 파일/폴더
+# !example.py  # 이 파일은 제외하지 않으려면 주석 해제
