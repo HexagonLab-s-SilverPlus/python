@@ -33,8 +33,10 @@ def decode_jwt(token):
         decoded_token = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         return decoded_token
     except jwt.ExpiredSignatureError:
+        log.error("JWT has expired")
         return None
     except jwt.InvalidTokenError:
+        log.error("Invalid JWT")
         return None
 
 
@@ -65,15 +67,24 @@ def token_required(f):
 
 
 def get_workspace(current_user, token):
-    headers = {'Authorization': f'Bearer {token}'}
+    refresh_token = request.headers.get("RefreshToken") # refresh token 가져오기
+    headers = {
+        'Authorization': f'Bearer {token.strip()}',
+        'RefreshToken': refresh_token,  # RefreshToken 추가
+        'Content-Type': 'application/json'
+    }
     workspace_check_url = f"{SPRING_BOOT_API_URL}/api/workspace/{current_user}"
+    log.info(f"Requesting workspace with headers: {headers}")
+    log.info(f"Workspace check URL: {workspace_check_url}")
     try:
         response = requests.get(workspace_check_url, headers=headers)
+        log.info(f"Spring Boot response status: {response.status_code}")
+        log.info(f"Spring Boot response body: {response.text}")
         if response.status_code == 200:
             workspace_data = response.json()
             return workspace_data.get("data", {}).get("workspaceId")
         elif response.status_code == 401:
-            log.error("Spring Boot 서버에서 인증 실패: Invalid token")
+            log.error(": Invalid token")
             raise Exception("Invalid token")
         elif response.status_code == 404:
             return None
