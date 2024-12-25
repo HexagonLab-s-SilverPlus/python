@@ -153,7 +153,7 @@ def create_workspace(current_user, user_message, ai_reply):
     refresh_token=request.headers.get("RefreshToken","").split(" ")[1]
 
     try:
-        # 워크스페이스 이름 생성
+        # 워크스페이스 한국어 이름 생성
         summary_response = openai.ChatCompletion.create(
             model="gpt-4-turbo",
             messages=[
@@ -276,7 +276,7 @@ def chat(current_user):
         "msgSenderRole": "AI",
         "msgContent": ai_reply,
         "msgSentAt": sent_at_epoch,
-        "msgSenderUUID": "AI-System",
+        "msgSenderUUID": "ai-uuid-1234-5678-90ab-cdef12345678",
         "parentMsgId": user_msg_id,
         "msgType": "T",
         "msgWorkspaceId": workspace_id
