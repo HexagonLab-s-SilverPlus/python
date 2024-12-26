@@ -260,7 +260,7 @@ def chat(current_user):
         response = openai.ChatCompletion.create(
             model="gpt-4-turbo",
             messages=[
-                {"role": "system", "content": "You are a friendly AI assistant."},
+                {"role": "system", "content": "당신은 친절하고 공감 능력이 뛰어난 AI 비서입니다. 대화 상대가 어르신이기 때문에 항상 공손하고 따뜻한 한국어로만 대답하세요."},
                 {"role": "user", "content": user_message}
             ]
         )
