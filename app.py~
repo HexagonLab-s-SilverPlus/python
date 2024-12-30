@@ -13,10 +13,14 @@ from flask import Flask, request, jsonify, g, send_file
 import subprocess
 from docx import Document
 
+
+
+
 # Flask 초기 설정
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": ["http://localhost:3000, http://localhost"]}},
      allow_headers=["Authorization", "Refreshtoken", "Content-Type"])
+
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +38,6 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 PROCESSED_FOLDER = os.path.join(BASE_DIR, 'processed')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
-
 
 # JWT 디코딩 함수
 def decode_jwt(token):
@@ -121,9 +124,8 @@ def token_required(f):
 
     return decorated
 
-
 def get_workspace(current_user, token=None):
-    token = g.get("access_token", token)  # g.access_token에서 가져오기
+    token=g.get("access_token", token) # g.access_token에서 가져오기
     refresh_token = request.headers.get("RefreshToken")  # RefreshToken 가져오기
     headers = {
         'Authorization': f'Bearer {token}',
@@ -158,8 +160,8 @@ def get_workspace(current_user, token=None):
 
 
 def create_workspace(current_user, user_message, ai_reply):
-    token = g.get("access_token", None)  # g.access_token에서 토큰 가져오기
-    refresh_token = request.headers.get("RefreshToken", "").split(" ")[1]
+    token = g.get("access_token", None) # g.access_token에서 토큰 가져오기
+    refresh_token=request.headers.get("RefreshToken","").split(" ")[1]
 
     try:
         # 워크스페이스 한국어 이름 생성
@@ -251,7 +253,7 @@ def chat(current_user):
     }
 
     headers = {
-        'Authorization': f'Bearer {token}',  # g.access_token 사용
+        'Authorization': f'Bearer {token}', # g.access_token 사용
         'RefreshToken': f'Bearer {refresh_token}'  # RefreshToken 추가
     }
 
@@ -269,8 +271,7 @@ def chat(current_user):
         response = openai.ChatCompletion.create(
             model="gpt-4-turbo",
             messages=[
-                {"role": "system",
-                 "content": "당신은 친절하고 공감 능력이 뛰어난 AI 비서입니다. 대화 상대가 어르신이기 때문에 항상 공손하고 따뜻한 한국어로만 대답하세요."},
+                {"role": "system", "content": "당신은 친절하고 공감 능력이 뛰어난 AI 비서입니다. 대화 상대가 어르신이기 때문에 항상 공손하고 따뜻한 한국어로만 대답하세요."},
                 {"role": "user", "content": user_message}
             ]
         )
@@ -305,6 +306,9 @@ def chat(current_user):
     return jsonify({"reply": ai_reply, "workspaceId": workspace_id}), 200
 
 
+
+
+
 @app.route('/upload-hwp', methods=['POST'])
 def upload_hwp():
     file = request.files.get('file')
@@ -317,10 +321,8 @@ def upload_hwp():
 
     # Convert HWP to ODT
     odt_path = os.path.join(PROCESSED_FOLDER, os.path.splitext(file.filename)[0] + '.odt')
-    result = subprocess.run(
-        ['libreoffice', '--headless', '--convert-to', 'odt', hwp_path, '--outdir', PROCESSED_FOLDER],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
+    result = subprocess.run(['libreoffice', '--headless', '--convert-to', 'odt', hwp_path, '--outdir', PROCESSED_FOLDER],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode != 0:
         log.error(f"LibreOffice 변환 실패: {result.stderr.decode()}")
         return jsonify({'error': 'Conversion failed', 'details': result.stderr.decode()}), 500
@@ -359,9 +361,8 @@ def convert_to_hwp():
 
     # Convert ODT to HWP
     hwp_path = os.path.join(PROCESSED_FOLDER, os.path.splitext(os.path.basename(odt_path))[0] + '.hwp')
-    result = subprocess.run(
-        ['libreoffice', '--headless', '--convert-to', 'hwp', odt_path, '--outdir', PROCESSED_FOLDER],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(['libreoffice', '--headless', '--convert-to', 'hwp', odt_path, '--outdir', PROCESSED_FOLDER],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode != 0:
         return jsonify({'error': 'ODT to HWP conversion failed', 'details': result.stderr.decode()}), 500
 
@@ -375,6 +376,8 @@ def download_hwp():
         return jsonify({'error': 'HWP file not found'}), 404
 
     return send_file(hwp_path, as_attachment=True)
+
+
 
 
 if __name__ == "__main__":
