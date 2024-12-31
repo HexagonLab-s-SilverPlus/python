@@ -1,125 +1,20 @@
-import base64
 import openai
 import os
-from dotenv import load_dotenv
-from flask_cors import CORS
-import jwt
-from functools import wraps
-import requests
 import uuid
 from datetime import datetime, timezone
-import logging
-from flask import Flask, request, jsonify, g, send_file
-import subprocess
-from docx import Document
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from common_utils import token_required, log, g  # 공통 코드에서 가져옴
+import requests
 
 # Flask 초기 설정
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["http://localhost:3000, http://localhost"]}},
-     allow_headers=["Authorization", "Refreshtoken", "Content-Type"])
-
-# 로깅 설정
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
+CORS(app, resources={r"/*": {"origins": ["http://localhost:3000, http://localhost"]}})
 
 # 환경 변수 로드
-load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
-SECRET_KEY_BASE64 = os.getenv("JWT_SECRET_KEY")
-SECRET_KEY = base64.b64decode(SECRET_KEY_BASE64)
 SPRING_BOOT_API_URL = os.getenv("SPRING_BOOT_API_URL")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-PROCESSED_FOLDER = os.path.join(BASE_DIR, 'processed')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PROCESSED_FOLDER, exist_ok=True)
-
-
-# JWT 디코딩 함수
-def decode_jwt(token):
-    try:
-        decoded_token = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return decoded_token
-    except jwt.ExpiredSignatureError:
-        log.warning("Access Token has expired. Attempting to refresh...")
-        return "expired"  # 만료된 상태를 반환
-    except jwt.InvalidTokenError:
-        log.error("Invalid JWT")
-        return None
-
-
-# Access Token 갱신 함수 추가
-# Spring Boot 서버를 호출하여 새로운 Access Token을 발급받는 로직을 추가한다.
-def refresh_access_token(refresh_token, access_token):
-    refresh_url = f"{SPRING_BOOT_API_URL}/reissue"
-    headers = {
-        'Authorization': f'Bearer {access_token}',  # Access Token
-        'RefreshToken': f'Bearer {refresh_token}',  # Refresh Token
-        'extendLogin': 'true'  # 로그인 연장 여부
-    }
-    try:
-        response = requests.post(refresh_url, headers=headers)
-        if response.status_code == 200:
-            # 새로 발급된 Access Token 반환
-            new_access_token = response.headers.get("Authorization").split(" ")[1]
-            log.info("Access Token successfully refreshed.")
-            return new_access_token  # 새로 발급된 AccessToken
-        else:
-            log.error(f"Access Token refresh failed: {response.text}")
-            return None
-    except requests.RequestException as e:
-        log.error(f"Error refreshing Access Token: {e}")
-        return None
-
-
-# JWT 인증 데코레이터
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith("Bearer "):
-                token = auth_header.split(" ")[1]
-        if not token:
-            return jsonify({'message': 'Token is missing!'}), 401
-
-        try:
-            data = decode_jwt(token)
-            if data == "expired":
-                refresh_token_header = request.headers.get("RefreshToken", "")
-                refresh_token = (
-                    refresh_token_header.split(" ")[1]
-                    if "Bearer " in refresh_token_header
-                    else None
-                )
-                if not refresh_token:
-                    return jsonify({'message': 'Refresh token is missing!'}), 401
-
-                # Spring Boot 서버를 호출하여 Access Token 갱신
-                new_token = refresh_access_token(refresh_token, access_token=token)
-                if not new_token:
-                    raise Exception("Failed to refresh Access Token")
-
-                # 새로 발급받은 토큰을 글로벌 컨텍스트에 저장
-                g.access_token = new_token
-                data = decode_jwt(new_token)
-            else:
-                g.access_token = token  # 기존 유효한 토큰을 저장
-
-            if not data:
-                raise Exception("Invalid token")
-            member = data.get("member")
-            if not member or "memUUID" not in member:
-                raise Exception("Invalid token: Missing member information")
-            current_user = member["memUUID"]
-        except Exception as e:
-            log.error(f"Token validation error: {e}")
-            return jsonify({'message': 'Token is invalid!'}), 401
-        return f(current_user, *args, **kwargs)
-
-    return decorated
 
 
 def get_workspace(current_user, token=None):
@@ -201,6 +96,10 @@ def create_workspace(current_user, user_message, ai_reply):
     except Exception as e:
         log.error(f"워크스페이스 저장 중 오류: {e}")
         raise Exception("Workspace creation error.")
+
+
+
+
 
 
 # Chat 엔드포인트
@@ -303,78 +202,6 @@ def chat(current_user):
         return jsonify({"error": f"AI 메시지 저장 중 오류: {e}"}), 500
 
     return jsonify({"reply": ai_reply, "workspaceId": workspace_id}), 200
-
-
-@app.route('/upload-hwp', methods=['POST'])
-def upload_hwp():
-    file = request.files.get('file')
-    if not file:
-        return jsonify({'error': 'No file uploaded'}), 400
-
-    # Save uploaded file
-    hwp_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(hwp_path)
-
-    # Convert HWP to ODT
-    odt_path = os.path.join(PROCESSED_FOLDER, os.path.splitext(file.filename)[0] + '.odt')
-    result = subprocess.run(
-        ['libreoffice', '--headless', '--convert-to', 'odt', hwp_path, '--outdir', PROCESSED_FOLDER],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    if result.returncode != 0:
-        log.error(f"LibreOffice 변환 실패: {result.stderr.decode()}")
-        return jsonify({'error': 'Conversion failed', 'details': result.stderr.decode()}), 500
-
-    return jsonify({'message': 'File uploaded and converted successfully', 'odt_path': odt_path}), 200
-
-
-@app.route('/update-odt', methods=['POST'])
-def update_odt():
-    data = request.json
-    odt_path = data.get('odt_path')
-    field_updates = data.get('fields', {})
-
-    if not os.path.exists(odt_path):
-        return jsonify({'error': 'ODT file not found'}), 404
-
-    # Update ODT file with new data (using python-docx)
-    doc = Document(odt_path)
-    for para in doc.paragraphs:
-        for field, value in field_updates.items():
-            if field in para.text:
-                para.text = para.text.replace(field, value)
-    updated_odt_path = os.path.join(PROCESSED_FOLDER, 'updated_' + os.path.basename(odt_path))
-    doc.save(updated_odt_path)
-
-    return jsonify({'message': 'ODT file updated successfully', 'updated_odt_path': updated_odt_path}), 200
-
-
-@app.route('/convert-to-hwp', methods=['POST'])
-def convert_to_hwp():
-    data = request.json
-    odt_path = data.get('updated_odt_path')
-
-    if not os.path.exists(odt_path):
-        return jsonify({'error': 'Updated ODT file not found'}), 404
-
-    # Convert ODT to HWP
-    hwp_path = os.path.join(PROCESSED_FOLDER, os.path.splitext(os.path.basename(odt_path))[0] + '.hwp')
-    result = subprocess.run(
-        ['libreoffice', '--headless', '--convert-to', 'hwp', odt_path, '--outdir', PROCESSED_FOLDER],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        return jsonify({'error': 'ODT to HWP conversion failed', 'details': result.stderr.decode()}), 500
-
-    return jsonify({'message': 'ODT converted back to HWP successfully', 'hwp_path': hwp_path}), 200
-
-
-@app.route('/download-hwp', methods=['GET'])
-def download_hwp():
-    hwp_path = request.args.get('hwp_path')
-    if not os.path.exists(hwp_path):
-        return jsonify({'error': 'HWP file not found'}), 404
-
-    return send_file(hwp_path, as_attachment=True)
 
 
 if __name__ == "__main__":
