@@ -1,29 +1,30 @@
 import base64
 import openai
-import os
 from dotenv import load_dotenv
 from flask_cors import CORS
 from docx import Document
 import subprocess
 import os
 import logging
-from flask import Flask, request, jsonify, g, send_file
-from common_utils import token_required, log, g  # 공통 코드에서 가져옴
-import pyhwp
+from flask import Blueprint, Flask, request, jsonify, send_file
+from app.common_utils import token_required, log  # 공통 코드에서 가져옴
 import re
 
+document_blueprint = Blueprint("document_service", __name__)
 
 # Flask 초기 설정
 app = Flask(__name__)
+# CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
 CORS(app, resources={r"/*": {"origins": ["http://localhost:3000, http://localhost"]}},
-     allow_headers=["Authorization", "Refreshtoken" "Content-Type"])
+     allow_headers=["Authorization", "Refreshtoken" "Content-Type"], supports_credentials=True)
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-os.makedirs("templates", exist_ok=True)
-os.makedirs("processed", exist_ok=True)
+os.makedirs("../templates", exist_ok=True)
+os.makedirs("../processed", exist_ok=True)
 # 환경 변수 로드
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -31,8 +32,11 @@ SECRET_KEY_BASE64 = os.getenv("JWT_SECRET_KEY")
 SECRET_KEY = base64.b64decode(SECRET_KEY_BASE64)
 SPRING_BOOT_API_URL = os.getenv("SPRING_BOOT_API_URL")
 
-os.makedirs("templates", exist_ok=True)
-os.makedirs("processed", exist_ok=True)
+os.makedirs("../templates", exist_ok=True)
+os.makedirs("../processed", exist_ok=True)
+
+# 프로젝트 루트 경로
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 def extract_keys_from_docx(template_path):
     """
@@ -61,11 +65,15 @@ def select_document():
     """
     data = request.json
     document_type = data.get('documentType')  # 예: "전입신고서"
+
+    # templates 폴더 경로
+    TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
+
     documents = {
-        "전입신고서": "templates/전입신고서.docx",
-        "사망신고서": "templates/사망신고서.docx",
-        "의료급여 신청서": "templates/의료급여 신청서.docx",
-        "기초연금 신청서": "templates/기초연금 신청서.docx"
+        "전입신고서": os.path.join(TEMPLATES_DIR, '전입신고서.docx'),
+        "사망신고서":os.path.join(TEMPLATES_DIR, '전입신고서.docx'),
+        "의료급여 신청서": os.path.join(TEMPLATES_DIR, '전입신고서.docx'),
+        "기초연금 신청서": os.path.join(TEMPLATES_DIR, '전입신고서.docx')
     }
     template_path = documents.get(document_type)
     if not template_path:
@@ -87,6 +95,9 @@ def generate_question():
     """키 값을 기반으로 GPT 질문 생성"""
     data = request.json
     key = data.get('key')  # 예: "이름"
+
+    # templates 폴더 경로
+    TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 
     # GPT로 질문 생성
     prompt = f"{key}를 어르신에게 쉽게 여쭤봐주세요."
@@ -123,8 +134,8 @@ def insert_values_to_docx(template_path, output_path, values):
         print(f".docx 파일 처리 중 오류 발생: {e}")
 
 # 테스트
-template_path = "templates/전입신고서.docx"
-output_path = "processed/전입신고서_completed.docx"
+template_path = "../templates/전입신고서.docx"
+output_path = "../processed/전입신고서_completed.docx"
 values = {"이름": "홍길동", "주소": "서울시 강남구", "생년월일": "1990-01-01"}
 insert_values_to_docx(template_path, output_path, values)
 
@@ -160,7 +171,7 @@ def submit_values():
 
     # .docx → .hwp 변환
     try:
-        convert_docx_to_hwp(output_docx_path, "processed")
+        convert_docx_to_hwp(output_docx_path, "../processed")
 
         # 변환된 HWP 파일이 비어 있는지 확인
         if os.path.exists(output_hwp_path) and os.path.getsize(output_hwp_path) == 0:
@@ -222,3 +233,7 @@ def download_document():
         return jsonify({'success': False, 'message': 'File not found or is empty'}), 404
 
     return send_file(file_path, as_attachment=True)
+
+
+if __name__ == '__main__':
+    app.run(port=5000, debug=True)

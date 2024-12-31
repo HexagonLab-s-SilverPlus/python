@@ -2,10 +2,12 @@ import openai
 import os
 import uuid
 from datetime import datetime, timezone
-from flask import Flask, request, jsonify
+from flask import Blueprint, Flask, request, jsonify
 from flask_cors import CORS
-from common_utils import token_required, log, g  # 공통 코드에서 가져옴
+from .common_utils import token_required, log, g
 import requests
+
+chat_blueprint = Blueprint("chat", __name__)
 
 # Flask 초기 설정
 app = Flask(__name__)
