@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 # CORS 설정
 CORS(app,
+
      resources={r"/*": {"origins": "http://localhost:3000"}},
      supports_credentials=True)
 
