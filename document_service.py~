@@ -116,7 +116,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             responses = data.get("values", {})
             if not responses:
                 return jsonify({"success": False, "message": "Values are missing"}), 400
-
+            
             document_type = data.get("documentType", "document")
 
             if not responses:
