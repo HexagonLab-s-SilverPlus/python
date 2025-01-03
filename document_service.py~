@@ -1,3 +1,5 @@
+import csv
+
 import openai
 from docx import Document
 import os
@@ -57,22 +59,20 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             log.error(f"예기치 못한 오류: {e}")
             return []
 
-    def create_document_from_responses(responses, output_path):
+    def create_csv_from_responses(responses, output_path):
         """
-        사용자 응답을 기반으로 Word 문서 생성
+        사용자 응답을 기반으로 CSV 파일 생성
         """
         try:
-            doc = Document()
-            doc.add_heading("문서 작성 결과", level=1)
-
-            for key, value in responses.items():
-                doc.add_paragraph(f"{key}: {value}")
-
-            doc.save(output_path)
-            log.info(f"문서 생성 완료: {output_path}")
+            with open(output_path, mode='w', newline='', encoding='utf-8-sig') as csv_file:
+                writer =csv.writer(csv_file)
+                writer.writerow(["Key", "Value"])  # 헤더 추가
+                for key, value in responses.items():
+                    writer.writerow([key, value])
+            log.info(f"CSV 파일 생성 완료: {output_path}")
             return output_path
         except Exception as e:
-            log.error(f"문서 생성 중 오류: {e}")
+            log.error(f"CSV 파일 생성 중 오류: {e}")
             return None
 
     def set_cors_headers(response):
@@ -116,19 +116,19 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             responses = data.get("values", {})
             if not responses:
                 return jsonify({"success": False, "message": "Values are missing"}), 400
-            
+
             document_type = data.get("documentType", "document")
 
             if not responses:
                 return jsonify({"success": False, "message": "Responses are missing"}), 400
 
-            output_path = f"processed/{document_type}.docx"
-            file_path = create_document_from_responses(responses, output_path)
+            csv_path = f"processed/{document_type}.csv"
+            create_csv_from_responses(responses, csv_path)
 
-            if not file_path:
+            if not os.path.exists(csv_path):
                 return jsonify({"success": False, "message": "File creation failed"}), 500
 
-            return jsonify({"success": True, "file_path": file_path})
+            return jsonify({"success": True, "csv_path": csv_path})
 
     # 문서 다운로드 엔드포인트
     @app.route('/download-document', methods=['GET', 'OPTIONS'])
@@ -139,9 +139,16 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
         """
         if request.method == "OPTIONS":
             return set_cors_headers(jsonify({"status": "OK"})), 200
-        elif request.method == "POST":
-            file_path = request.args.get('file_path')
-            if not os.path.exists(file_path):
+        elif request.method == "GET":
+            file_path = request.args.get('file_path') # 쿼리 매개변수로 파일 경로 받기 ("processed/address.csv")
+
+            if not file_path or not os.path.exists(file_path):
                 return jsonify({"success": False, "message": "File not found"}), 404
 
-            return send_file(file_path, as_attachment=True)
+            # CSV 파일의 MIME type과 파일 이름 명시
+            return send_file(
+                file_path,
+                as_attachment=True,
+                mimetype='text/csv',
+                download_name=os.path.basename(file_path)  # Flask >= 2.0
+            )
