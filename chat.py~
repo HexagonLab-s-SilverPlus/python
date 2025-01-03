@@ -8,6 +8,7 @@ import requests
 import logging
 from flask import Blueprint
 from flask_cors import CORS
+import chardet
 
 chat_blueprint = Blueprint("chat", __name__)
 CORS(chat_blueprint,
