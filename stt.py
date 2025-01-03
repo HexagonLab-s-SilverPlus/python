@@ -42,9 +42,19 @@ def process_audio():
             audio = recognizer.record(source)
             recognized_text = recognizer.recognize_google(audio, language='ko-KR')
             log.info(f"Recognized text: {recognized_text}")
+    except sr.UnknownValueError:
+        # Google STT가 음성을 인식하지 못한 경우
+        log.error("Google STT가 음성을 인식하지 못했습니다.")
+        return jsonify({"error": "음성을 인식하지 못했습니다."}), 400  # 400 Bad Request 반환
+    except sr.RequestError as e:
+        # Google STT 서비스 요청 중 오류 발생
+        log.error(f"Google STT 요청 오류: {e}")
+        return jsonify({"error": "STT 서비스 요청 오류가 발생했습니다."}), 500  # 500 Internal Server Error 반환
     except Exception as e:
+        # 그 외 예기치 못한 오류 처리
         log.error(f"오류가 발생하였습니다: {e}")
-        return jsonify({"error": "오류가 발생하였습니다."}), 500
+        return jsonify({"error": "오류가 발생하였습니다."}), 500  # 500 Internal Server Error 반환
+
 
     # React로 텍스트 반환
     return jsonify({"recognized_text": recognized_text}), 200
