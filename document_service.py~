@@ -61,7 +61,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
 
     def create_csv_from_responses(responses, output_path):
         """
-        사용자 응답을 기반으로 CSV 파일 생성 (BOM 추가)
+        사용자 응답을 기반으로 CSV 파일 생성
         """
         try:
             with open(output_path, mode='w', newline='', encoding='utf-8-sig') as csv_file:
@@ -149,6 +149,6 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             return send_file(
                 file_path,
                 as_attachment=True,
-                mimetype='text/csv; charset=utf-8',
+                mimetype='text/csv',
                 download_name=os.path.basename(file_path)  # Flask >= 2.0
             )
