@@ -40,7 +40,7 @@ def refresh_access_token(refresh_token, access_token):
     refresh_url = f"{SPRING_BOOT_API_URL}/reissue"
     headers = {
         'Authorization': f'Bearer {access_token}',
-        'RefreshToken': f'Bearer {refresh_token}',
+        'RefreshToken': refresh_token, # Bearer 제거
         'extendLogin': 'true'
     }
     try:
@@ -52,6 +52,8 @@ def refresh_access_token(refresh_token, access_token):
                 log.error("응답 헤더에 Authorization이 유효하지 않거나 없음")
                 return None, None
             new_access_token = authorization_header.split(" ")[1]
+
+            log.info(f"Flask 요청 헤더: {request.headers}")
 
             # RefreshToken 헤더에서 Refresh Token 추출
             refresh_token_header = response.headers.get("RefreshToken", "")
@@ -79,7 +81,8 @@ def token_required(f):
 
         # Authorization 헤더 확인
         token = request.headers.get('Authorization', '').replace("Bearer ", "")
-        refresh_token = request.headers.get("RefreshToken", "").replace("Bearer ", "")
+        refresh_token = request.headers.get("RefreshToken", "") or request.headers.get("refreshtoken", "")
+
         refresh_token_ = request.headers.get("Refreshtoken", "").replace("Bearer ", "")
 
         log.info("=======================================")
@@ -103,16 +106,16 @@ def token_required(f):
 
             if data == "expired":
                 # Refresh Token으로 갱신
+                new_access_token, new_refresh_token = refresh_access_token(refresh_token, token)
                 if not refresh_token:
                     return jsonify({'message': 'Refresh token is missing!'}), 401
 
-                new_token = refresh_access_token(refresh_token, token)
-                if not new_token:
+                if not new_access_token or not new_refresh_token:
                     raise Exception("Failed to refresh Access Token")
 
-                g.access_token = new_token
-                g.refresh_token = refresh_token  # RefreshToken도 g 객체에 저장
-                data = decode_jwt(new_token)
+                g.access_token = new_access_token
+                g.refresh_token = new_refresh_token
+                data = decode_jwt(g.access_token)
             else:
                 g.access_token = token
                 g.refresh_token = refresh_token # RefreshToken도 저장

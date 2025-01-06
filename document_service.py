@@ -114,14 +114,17 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             }
 
             # Access Token 및 Refresh Token
-            access_token=g.get("access_token", "")
-            refresh_token=g.get("refresh_token", "")
+            access_token = g.get("access_token", "")
+            refresh_token = g.get("refresh_token", "")
+
             log.info(f"g에 저장된 refresh token: {refresh_token}")
 
             headers = {
-                "Authorization": f"Bearer {g.get('access_token', '')}",
-                "RefreshToken": f"Bearer {g.get('refresh_token', '')}"
+                "Authorization": f"Bearer {access_token}",
+                "RefreshToken": refresh_token
             }
+
+            log.info(f"***********헤더 : {headers}")
 
             document_response = requests.post(
                 f"{SPRING_BOOT_API_URL}/api/document",
@@ -142,7 +145,8 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
                 doc_file_response = requests.post(
                     f"{SPRING_BOOT_API_URL}/api/doc-files",
                     data=doc_file_payload,  # key-value 데이터
-                    files=files  # 업로드할 파일
+                    files=files,  # 업로드할 파일
+                    headers=headers
                 )
                 doc_file_response.raise_for_status()  # HTTP 에러 확인
                 log.info(f"DOC_FILE 저장 및 NAS 업로드 완료: {doc_file_response.json()}")

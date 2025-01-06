@@ -117,10 +117,15 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             access_token=g.get("access_token", "")
             refresh_token=g.get("refresh_token", "")
 
+            log.info(f"g에 저장된 refresh token: {refresh_token}")
+
             headers = {
-                "Authorization": f"Bearer {g.get('access_token', '')}",
-                "RefreshToken": f"Bearer {g.get('refresh_token', '')}"
+                "Authorization": f"Bearer {access_token}",
+                "RefreshToken": refresh_token
             }
+
+            log.info(f"***********헤더 : {headers}")
+
 
             document_response = requests.post(
                 f"{SPRING_BOOT_API_URL}/api/document",
