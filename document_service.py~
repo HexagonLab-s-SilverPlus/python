@@ -114,8 +114,8 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             }
 
             # Access Token 및 Refresh Token
-            access_token=g.get("access_token", "")
-            refresh_token=g.get("refresh_token", "")
+            access_token = g.get("access_token", "")
+            refresh_token = g.get("refresh_token", "")
 
             log.info(f"g에 저장된 refresh token: {refresh_token}")
 
@@ -125,7 +125,6 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             }
 
             log.info(f"***********헤더 : {headers}")
-
 
             document_response = requests.post(
                 f"{SPRING_BOOT_API_URL}/api/document",
@@ -138,7 +137,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
 
             # DOC_FILE 저장 및 NAS 업로드
             with open(csv_path, "rb") as file_stream:
-                doc_file_payload = {"docId": doc_id}  # docId는 요청의 @RequestParam으로 사용됨
+                doc_file_payload = {"docId": doc_id, "csvFilename": csv_filename}  # docId는 요청의 @RequestParam으로 사용됨
                 files = {
                     "file": (csv_filename, file_stream, "text/csv")  # file은 요청의 @RequestParam으로 사용됨
                 }
@@ -146,7 +145,8 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
                 doc_file_response = requests.post(
                     f"{SPRING_BOOT_API_URL}/api/doc-files",
                     data=doc_file_payload,  # key-value 데이터
-                    files=files  # 업로드할 파일
+                    files=files,  # 업로드할 파일
+                    headers=headers
                 )
                 doc_file_response.raise_for_status()  # HTTP 에러 확인
                 log.info(f"DOC_FILE 저장 및 NAS 업로드 완료: {doc_file_response.json()}")

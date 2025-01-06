@@ -137,7 +137,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
 
             # DOC_FILE 저장 및 NAS 업로드
             with open(csv_path, "rb") as file_stream:
-                doc_file_payload = {"docId": doc_id}  # docId는 요청의 @RequestParam으로 사용됨
+                doc_file_payload = {"docId": doc_id, "csvFilename": csv_filename}  # csv_filename 추가
                 files = {
                     "file": (csv_filename, file_stream, "text/csv")  # file은 요청의 @RequestParam으로 사용됨
                 }
