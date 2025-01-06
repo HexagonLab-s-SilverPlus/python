@@ -213,11 +213,15 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
                 if not result:
                     return jsonify({"success": False, "message": "CSV 생성 또는 데이터 저장 실패"}), 500
 
+                # csvPath 로그
+                log.info(f"CSV 경로: {result['csvPath']}")
+
                 return jsonify({
                     "success": True,
                     "message": "CSV 파일 생성 및 데이터 저장 성공",
                     "documentId": result["documentId"],
-                    "csvPath": result["csvPath"]
+                    "csvPath": os.path.normpath(result["csvPath"]).replace("\\", "/")
+
                 })
 
             except Exception as e:
@@ -234,15 +238,16 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
         if request.method == "OPTIONS":
             return set_cors_headers(jsonify({"status": "OK"})), 200
         elif request.method == "GET":
-            file_path = request.args.get('file_path')  # 쿼리 매개변수로 파일 경로 받기 ("processed/address.csv")
+            # 'csv_path'로 수정
+            csv_path = request.args.get('csv_path')  # 쿼리 매개변수로 파일 경로 받기 ("processed/address.csv")
 
-            if not file_path or not os.path.exists(file_path):
+            if not csv_path or not os.path.exists(csv_path):
                 return jsonify({"success": False, "message": "파일을 찾을 수 없습니다."}), 404
 
             # CSV 파일의 MIME type과 파일 이름 명시
             return send_file(
-                file_path,
+                csv_path,
                 as_attachment=True,
                 mimetype='text/csv; charset=utf-8',
-                download_name=os.path.basename(file_path)  # Flask >= 2.0
+                download_name=os.path.basename(csv_path)  # Flask >= 2.0
             )
