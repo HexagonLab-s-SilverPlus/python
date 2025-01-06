@@ -117,7 +117,6 @@ def probabilityEMG(array, memUUID, sessId):
     true_count = array.count(True)
     false_count = array.count(False)
     total = len(array)
-    # make_call()
 
     if total > 0:
         true_ratio = true_count / total
@@ -127,6 +126,7 @@ def probabilityEMG(array, memUUID, sessId):
         print(f"False Count : {true_count}")
         if true_ratio >= EMG_PROB:
             insertEMG(memUUID, sessId)
+            # make_call()
         else:
             print("정상입니다.")
     else:
