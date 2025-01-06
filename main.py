@@ -4,6 +4,7 @@ import chat
 import document_service
 import stt
 import tts
+import emg
 
 app = Flask(__name__)
 
@@ -17,6 +18,7 @@ chat.register_routes(app)
 document_service.register_routes(app)
 stt.register_routes(app)
 tts.register_routes(app)
+emg.register_routes(app)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
