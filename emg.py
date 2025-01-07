@@ -5,15 +5,25 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image
-from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask import request, jsonify, Flask
 import time
+import dbConnectTemplate as dbtemp
+import uuid
+from datetime import datetime
+import pytz
+import os
+
+from twilio.rest import Client
+
+account_sid = os.getenv("ACCOUNT_SID")
+auth_token = os.getenv("AUTH_TOKEN")
+client = Client(account_sid, auth_token)
+
 
 # 전역 변수
-TIME_LIMIT = 20  # 카메라 켜지는 시간
-CHECK_TIME = 0.1  # 모션트래킹 측정할 시간 간격
 COORDINATE_SIZE = 33  # 저장(X, Y) 배열사이즈
 MOVE_DISTANCE = 0.35  # 움직인 거리
+EMG_PROB = 0.95 # 정확도
 
 mp_holistic = mp.solutions.holistic
 holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -22,12 +32,16 @@ previous_X = np.zeros(COORDINATE_SIZE)  # 이전 X 좌표 배열
 previous_Y = np.zeros(COORDINATE_SIZE)  # 이전 Y 좌표 배열
 array_EMG = []
 
+dbtemp.oracle_init()
+conn = dbtemp.connect()
+
 def register_routes(app) :
     @app.route('/emg/start', methods=['POST'])
     def start_emg_test():
-        print(array_EMG)
         data = request.get_json()
         image_data_list = data.get('images', [])
+        memUUID = data.get('uuid')
+        sessId = data.get('sessId')
 
         if not image_data_list:
             return jsonify({'message': '이미지가 제공되지 않았습니다.'}), 400
@@ -50,10 +64,10 @@ def register_routes(app) :
             # Holistic 모델 사용하여 랜드마크 추출
             result = holistic.process(rgb_image)
 
+            isEMG = True
             # 감지된 포즈의 랜드마크 그리기
             if result.pose_landmarks:
 
-                isEMG = True
                 for i in range(len(result.pose_landmarks.landmark)):
                     landmark = result.pose_landmarks.landmark[i]
 
@@ -67,18 +81,17 @@ def register_routes(app) :
 
                     if distance > MOVE_DISTANCE:
                         previous_X[i], previous_Y[i] = landmark.x, landmark.y
+
                         isEMG = False
-                    else:
-                        previous_X[i], previous_Y[i] = landmark.x, landmark.y
+
 
             array_EMG.append(isEMG)
-            print(isEMG)
 
         # 리소스 해제
 
         cv2.destroyAllWindows()
         print(array_EMG)
-        probabilityEMG(array_EMG)
+        probabilityEMG(array_EMG, memUUID, sessId)
 
         return jsonify("message EMG 테스트."), 200
 
@@ -92,93 +105,12 @@ def register_routes(app) :
 
         return jsonify("초기화 완료."), 200
 
-# def register_routes(app):
-#     @app.route("/emg/start", methods=["POST"])
-#     def start_webcam():
-#         cap = cv2.VideoCapture(0)
-#         start_Time, previous_time = time.time(),time.time()
-#         isInit = False
-#         isEMG = False
-#
-#         previous_X = np.zeros(COORDINATE_SIZE)  # 이전 X 좌표 배열
-#         previous_Y = np.zeros(COORDINATE_SIZE)  # 이전 Y 좌표 배열
-#
-#         array_EMG = []
-#
-#         while cap.isOpened():
-#             ret, frame = cap.read()
-#             if not ret:
-#                 print("웹캠을 열 수 없습니다.")
-#                 break
-#             current_time = time.time()
-#
-#             # BGR 이미지를 RGB로 변환
-#             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-#
-#             # Holistic 모델 사용
-#             result = holistic.process(rgb_frame)
-#
-#             # 감지된 포즈의 랜드마크 그리기
-#             if result.pose_landmarks:
-#
-#                 isEMG = True
-#                 for i in range(len(result.pose_landmarks.landmark)):
-#                     landmark = result.pose_landmarks.landmark[i]
-#
-#                     # 랜드마크 좌표를 화면에 그리기
-#                     h, w, _ = frame.shape
-#                     cx, cy = int(landmark.x * w), int(landmark.y * h)
-#                     cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)  # 초록색 점으로 표시
-#
-#                     if current_time - previous_time > CHECK_TIME:
-#                         distance = calculate_distance(landmark.x,  landmark.y, previous_X[i], previous_Y[i])
-#
-#                         if isInit:
-#                             if distance > MOVE_DISTANCE:
-#                                 previous_X[i], previous_Y[i] = landmark.x, landmark.y
-#                                 isEMG = False
-#                                 break
-#                         else:
-#                             previous_X[i], previous_Y[i] = landmark.x,  landmark.y
-#
-#                         if i == len(result.pose_landmarks.landmark) - 1:
-#                             isInit = True
-#
-#             if current_time - previous_time > CHECK_TIME:
-#                 array_EMG.append(isEMG)
-#                 previous_time = current_time
-#                 print(isEMG)
-#
-#
-#             # 결과 화면에 표시
-#             cv2.imshow("Pose Detection", frame)
-#
-#             # 'q'를 눌러 종료
-#             if isTimeOver(start_Time):
-#                 break
-#             if cv2.waitKey(1) & 0xFF == ord('q'):
-#                 break
-#
-#         # 리소스 해제
-#         cap.release()
-#         cv2.destroyAllWindows()
-#         print(array_EMG)
-#         probabilityEMG(array_EMG)
-#
-#         return jsonify({"message": "EMG 테스트."}), 200
-
-def isTimeOver(start_Time):
-    if  time.time() - start_Time > TIME_LIMIT:
-        return True
-    else:
-        return False
-
 def calculate_distance(x1, y1, x2, y2):
     # 유클리드 거리 계산
     distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
     return distance
 
-def probabilityEMG(array):
+def probabilityEMG(array, memUUID, sessId):
     """
     motion_history 배열을 받아 True와 False의 비율을 계산하여 출력하는 함수
     """
@@ -191,8 +123,69 @@ def probabilityEMG(array):
         false_ratio = false_count / total
         print(f"True 비율: {true_ratio * 100:.2f}%")
         print(f"False 비율: {false_ratio * 100:.2f}%")
+        print(f"False Count : {true_count}")
+        if true_ratio >= EMG_PROB:
+            insertEMG(memUUID, sessId)
+            # make_call()
+        else:
+            print("정상입니다.")
     else:
         print("모션 기록이 없습니다.")
+def insertEMG(memUUID, sessId):
+    EMG_LOG_ID = str(uuid.uuid4())
+    EMG_CAP_PATH = None
+    EMG_DETECTED_MOTION = "움직임 없음"
+    EMG_ALERT_SENT_TO = ""
+    EMG_CREATED_AT = None
+    EMG_USER_UUID = memUUID
+    EMG_CANCEL = "N"
+    EMG_CANCLE_AT = None
+    EMG_F_PHONE = "01052928302"
+    EMG_S_PHONE = "01052928302"
+    EMG_SESS_ID = sessId
 
-# 웹캠 시작
-# start_webcam()
+    # KST (Korea Standard Time) 시간대 객체 생성
+    kst = pytz.timezone('Asia/Seoul')
+    # 현재 KST 시간 가져오기
+    EMG_CREATED_AT = datetime.now(kst)
+
+    global conn
+
+    query = f"select * from member WHERE MEM_UUID = '{memUUID}'"
+
+    cursor = conn.cursor()  # db 연결 정보로 커서 객체를 생성함
+    cursor.execute(query)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
+    # print(cursor.fetchall())
+    for row in cursor:
+        EMG_ALERT_SENT_TO = row[22]
+
+    tp_value = (EMG_LOG_ID, EMG_CAP_PATH, EMG_DETECTED_MOTION, EMG_ALERT_SENT_TO, EMG_CREATED_AT,
+                EMG_USER_UUID, EMG_CANCEL, EMG_CANCLE_AT, EMG_F_PHONE, EMG_S_PHONE, EMG_SESS_ID)
+    print(tp_value)
+    query = "insert into EMERGENCY_LOG values (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)"
+
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(query, tp_value)
+        dbtemp.commit(conn)
+        print("commit")
+    except Exception as e:
+        dbtemp.rollback(conn)
+        print(f"rollback error: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+def make_call():
+    call = client.calls.create(
+        twiml="<Response><Say>The current guardian is in danger</Say></Response>",
+        to="+821052928302",
+        from_="+12298087476",
+    )
+
+    messages = client.messages.create(
+        to="+821052928302",
+        from_="+12298087476",
+        body="위급 상황입니다."
+    )
