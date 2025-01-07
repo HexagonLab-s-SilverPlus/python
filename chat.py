@@ -30,39 +30,39 @@ def init_logging():
     return logger
 
 
-def get_workspace(current_user, token=None):
-    token = g.get("access_token", token)  # g.access_token에서 가져오기
-    refresh_token = request.headers.get("RefreshToken")  # RefreshToken 가져오기
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'RefreshToken': refresh_token,  # RefreshToken 추가
-        'Content-Type': 'application/json'
-    }
-    workspace_check_url = f"{SPRING_BOOT_API_URL}/api/workspace/{current_user}"
-    log.info(f"Requesting workspace with headers: {headers}")
-    try:
-        response = requests.get(workspace_check_url, headers=headers)
-        log.info(f"Spring Boot response status: {response.status_code}")
-        log.info(f"Spring Boot response body: {response.text}")
-        if response.status_code == 200:
-            workspace_data = response.json().get("data", [])  # list 이기 때문에 data를 배열로 처리해야 한다.
-            if workspace_data:
-                # 예시로 첫 번째 워크스페이스 ID 반환
-                return workspace_data[0].get("workspaceId")
-            else:
-                log.info("워크스페이스가 존재하지 않습니다.")
-                return None
-        elif response.status_code == 401:
-            log.error("Spring Boot 서버에서 인증 실패: Invalid token")
-            raise Exception("Invalid token")
-        elif response.status_code == 404:
-            return None
-        else:
-            log.error(f"Spring Boot API 호출 중 오류: {response.text}")
-            raise Exception(f"Unexpected error during workspace retrieval: {response.text}")
-    except requests.RequestException as e:
-        log.error(f"워크스페이스 조회 실패: {e}")
-        raise Exception("Workspace retrieval error.")
+# def get_workspace(current_user, token=None):
+#     token = g.get("access_token", token)  # g.access_token에서 가져오기
+#     refresh_token = request.headers.get("RefreshToken")  # RefreshToken 가져오기
+#     headers = {
+#         'Authorization': f'Bearer {token}',
+#         'RefreshToken': refresh_token,  # RefreshToken 추가
+#         'Content-Type': 'application/json'
+#     }
+#     workspace_check_url = f"{SPRING_BOOT_API_URL}/api/workspace/{current_user}"
+#     log.info(f"Requesting workspace with headers: {headers}")
+#     try:
+#         response = requests.get(workspace_check_url, headers=headers)
+#         log.info(f"Spring Boot response status: {response.status_code}")
+#         log.info(f"Spring Boot response body: {response.text}")
+#         if response.status_code == 200:
+#             workspace_data = response.json().get("data", [])  # list 이기 때문에 data를 배열로 처리해야 한다.
+#             if workspace_data:
+#                 # 예시로 첫 번째 워크스페이스 ID 반환
+#                 return workspace_data[0].get("workspaceId")
+#             else:
+#                 log.info("워크스페이스가 존재하지 않습니다.")
+#                 return None
+#         elif response.status_code == 401:
+#             log.error("Spring Boot 서버에서 인증 실패: Invalid token")
+#             raise Exception("Invalid token")
+#         elif response.status_code == 404:
+#             return None
+#         else:
+#             log.error(f"Spring Boot API 호출 중 오류: {response.text}")
+#             raise Exception(f"Unexpected error during workspace retrieval: {response.text}")
+#     except requests.RequestException as e:
+#         log.error(f"워크스페이스 조회 실패: {e}")
+#         raise Exception("Workspace retrieval error.")
 
 
 # 채팅 세션 시작
@@ -189,6 +189,7 @@ def register_routes(app):
             user_message = request.json.get("message")
             create_workspace_flag = request.json.get("createWorkspace", False)  # 플래그 확인
             existing_workspace_id = request.json.get("workspaceId")  # 선택한 워크스페이스ID
+            log.info(f"리액트에서 받은 워크스페이스ID: {existing_workspace_id}")
             workspace_id = None  # 초기화
 
             if not user_message:
