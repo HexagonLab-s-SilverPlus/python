@@ -5,6 +5,8 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image
+from docx.shared import Length
+from exceptiongroup import catch
 from flask import request, jsonify, Flask
 import time
 import dbConnectTemplate as dbtemp
@@ -23,7 +25,7 @@ client = Client(account_sid, auth_token)
 # 전역 변수
 COORDINATE_SIZE = 33  # 저장(X, Y) 배열사이즈
 MOVE_DISTANCE = 0.35  # 움직인 거리
-EMG_PROB = 0.95 # 정확도
+EMG_PROB = 0.35 # 정확도
 
 mp_holistic = mp.solutions.holistic
 holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -33,15 +35,16 @@ previous_Y = np.zeros(COORDINATE_SIZE)  # 이전 Y 좌표 배열
 array_EMG = []
 
 dbtemp.oracle_init()
-conn = dbtemp.connect()
 
 def register_routes(app) :
     @app.route('/emg/start', methods=['POST'])
-    def start_emg_test():
+    def emg_start():
         data = request.get_json()
         image_data_list = data.get('images', [])
         memUUID = data.get('uuid')
         sessId = data.get('sessId')
+        print("memUUID : " + memUUID)
+        print("sessId : " + sessId)
 
         if not image_data_list:
             return jsonify({'message': '이미지가 제공되지 않았습니다.'}), 400
@@ -78,12 +81,10 @@ def register_routes(app) :
 
                     distance = calculate_distance(landmark.x, landmark.y, previous_X[i], previous_Y[i])
 
-
                     if distance > MOVE_DISTANCE:
                         previous_X[i], previous_Y[i] = landmark.x, landmark.y
 
                         isEMG = False
-
 
             array_EMG.append(isEMG)
 
@@ -91,12 +92,12 @@ def register_routes(app) :
 
         cv2.destroyAllWindows()
         print(array_EMG)
-        probabilityEMG(array_EMG, memUUID, sessId)
+        isEMG, emgUUID = probabilityEMG(array_EMG, memUUID, sessId)
 
-        return jsonify("message EMG 테스트."), 200
+        return jsonify({"emgMSG": isEMG, "emgUUID": emgUUID}), 200
 
     @app.route('/emg/end', methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
-    def end_emg_test():
+    def emg_end():
         global previous_X, previous_Y, array_EMG
         previous_X = np.zeros(COORDINATE_SIZE)  # 이전 X 좌표 배열
         previous_Y = np.zeros(COORDINATE_SIZE)  # 이전 Y 좌표 배열
@@ -104,6 +105,14 @@ def register_routes(app) :
         print("초기화 완료")
 
         return jsonify("초기화 완료."), 200
+
+    @app.route('/emg/cancel', methods=['POST'])
+    def emg_cancel():
+        data = request.get_json()
+        memUUID = data.get('uuid')
+        updateEMG(memUUID)
+        return jsonify("업데이트 완료."), 200
+
 
 def calculate_distance(x1, y1, x2, y2):
     # 유클리드 거리 계산
@@ -125,13 +134,17 @@ def probabilityEMG(array, memUUID, sessId):
         print(f"False 비율: {false_ratio * 100:.2f}%")
         print(f"False Count : {true_count}")
         if true_ratio >= EMG_PROB:
-            insertEMG(memUUID, sessId)
+            emgUUID = insertEMG(memUUID, sessId)
             # make_call()
+            print("위급 상황입니다.")
+            return "emg", emgUUID
         else:
             print("정상입니다.")
+            return "normal", None
     else:
         print("모션 기록이 없습니다.")
 def insertEMG(memUUID, sessId):
+
     EMG_LOG_ID = str(uuid.uuid4())
     EMG_CAP_PATH = None
     EMG_DETECTED_MOTION = "움직임 없음"
@@ -149,33 +162,56 @@ def insertEMG(memUUID, sessId):
     # 현재 KST 시간 가져오기
     EMG_CREATED_AT = datetime.now(kst)
 
-    global conn
-
     query = f"select * from member WHERE MEM_UUID = '{memUUID}'"
-
+    conn = dbtemp.connect()
     cursor = conn.cursor()  # db 연결 정보로 커서 객체를 생성함
-    cursor.execute(query)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
-    # print(cursor.fetchall())
-    for row in cursor:
-        EMG_ALERT_SENT_TO = row[22]
-
-    tp_value = (EMG_LOG_ID, EMG_CAP_PATH, EMG_DETECTED_MOTION, EMG_ALERT_SENT_TO, EMG_CREATED_AT,
-                EMG_USER_UUID, EMG_CANCEL, EMG_CANCLE_AT, EMG_F_PHONE, EMG_S_PHONE, EMG_SESS_ID)
-    print(tp_value)
-    query = "insert into EMERGENCY_LOG values (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)"
-
-    cursor = conn.cursor()
 
     try:
+        cursor.execute(query)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
+
+        # 컬럼명 얻기
+        columns = [desc[0] for desc in cursor.description]
+
+        rows = cursor.fetchall()
+        for row in rows:
+            EMG_ALERT_SENT_TO = row[columns.index("MEM_UUID_MGR")]
+            print(f"EMG_ALERT_SENT_TO: {EMG_ALERT_SENT_TO}")
+
+        tp_value = (EMG_LOG_ID, EMG_CAP_PATH, EMG_DETECTED_MOTION, EMG_ALERT_SENT_TO, EMG_CREATED_AT,
+                    EMG_USER_UUID, EMG_CANCEL, EMG_CANCLE_AT, EMG_F_PHONE, EMG_S_PHONE, EMG_SESS_ID)
+        print(tp_value)
+        query = "insert into EMERGENCY_LOG values (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)"
+
         cursor.execute(query, tp_value)
         dbtemp.commit(conn)
         print("commit")
+    except Exception as e:
+        dbtemp.rollback(conn)
+        EMG_LOG_ID = None
+        print(f"rollback error: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+        return EMG_LOG_ID
+
+def updateEMG(uuid):
+    print(uuid)
+    conn = dbtemp.connect()
+    cursor = conn.cursor()  # db 연결 정보로 커서 객체를 생성함
+    query = f"update emergency_log set EMG_CANCEL = 'Y' where EMG_LOG_ID = '{uuid}'"
+
+    try:
+        cursor.execute(query)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
+        print(cursor.fetchall)
+        dbtemp.commit(conn)
     except Exception as e:
         dbtemp.rollback(conn)
         print(f"rollback error: {e}")
     finally:
         cursor.close()
         conn.close()
+
 
 def make_call():
     call = client.calls.create(
