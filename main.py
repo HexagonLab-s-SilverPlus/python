@@ -2,6 +2,7 @@ from flask import Flask
 from flask_cors import CORS
 import chat
 import document_service
+import faceLogin
 import stt
 import tts
 import emg
@@ -19,6 +20,7 @@ document_service.register_routes(app)
 stt.register_routes(app)
 tts.register_routes(app)
 emg.register_routes(app)
+faceLogin.register_routes(app)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

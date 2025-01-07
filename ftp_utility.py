@@ -1,6 +1,15 @@
 from ftplib import FTP
+import io
 
 class FTPUtility:
+    ftp = FTP()
+    ftp.set_debuglevel(2)  # 디버깅 레벨 설정
+    ftp.connect("ktj0514.synology.me", 21)
+    ftp.login("anonymous", "")
+    ftp.cwd("files/member/profile")
+    ftp.retrlines("LIST")
+    ftp.quit()
+
     def __init__(self, server, port, username, password):
         self.server = server
         self.port=port
@@ -17,9 +26,10 @@ class FTPUtility:
     def list_files(self, remote_dir):
         self.ftp.cwd(remote_dir)
         files = self.ftp.nlst()
-        print(f"원본 파일 목록: {files}")
-        decoded_files = [f.encode('latin-1').decode('utf-8', 'ignore') for f in files]
-        print(f"디코딩된 파일 목록: {decoded_files}")
+        # 숨김 파일 필터링 및 디코딩
+        decoded_files = [
+            f.encode('latin-1').decode('utf-8', 'ignore') for f in files if not f.startswith("._")
+        ]
         return decoded_files
 
 
@@ -39,7 +49,23 @@ class FTPUtility:
             print(f"파일 다운로드 중 오류 발생: {e}")
             raise
 
-    def dissconnect(self):
+    def disconnect(self):
         if self.ftp:
             self.ftp.quit()
             print("Disconnect from FTP server")
+
+    def open_file(self, remote_path):
+        """
+        FTP에서 파일을 열어 데이터를 반환합니다.
+        """
+        try:
+            print(f"Fetching file: {remote_path}")
+            file_data = io.BytesIO()
+
+            # 파일 다운로드
+            self.ftp.retrbinary(f"RETR {remote_path}", file_data.write)
+            file_data.seek(0)
+            return file_data
+        except Exception as e:
+            print(f"Error while fetching file: {e}")
+            raise
