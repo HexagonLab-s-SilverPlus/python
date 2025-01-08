@@ -8,7 +8,7 @@ import requests
 import logging
 from flask import Blueprint
 from flask_cors import CORS
-import chardet
+from openai import OpenAI
 
 chat_blueprint = Blueprint("chat", __name__)
 CORS(chat_blueprint,
@@ -16,9 +16,11 @@ CORS(chat_blueprint,
      supports_credentials=True)
 
 # 환경 변수 로드
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# 클라이언트 초기화
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")  # 환경 변수에서 API 키 로드
+)
 SPRING_BOOT_API_URL = os.getenv("SPRING_BOOT_API_URL")
-
 
 
 # 로깅 초기화
@@ -63,13 +65,29 @@ def get_workspace(current_user, token=None):
         raise Exception("Workspace retrieval error.")
 
 
+# 채팅 세션 시작
+def start_chat_session(workspace_id, current_user, headers):
+    try:
+        response = requests.post(
+            f"{SPRING_BOOT_API_URL}/api/session/start",
+            params={"workspaceId": workspace_id, "memUUID": current_user},
+            headers=headers
+        )
+        if response.status_code != 201:
+            log.error(f"채팅 세션 생성 실패: {response.text}")
+            raise Exception("Chat session creation failed.")
+    except Exception as e:
+        log.error(f"채팅 세션 생성 에러: {e}")
+        raise Exception("Chat session creation error.")
+
+
 def create_workspace(current_user, user_message, ai_reply):
     token = g.get("access_token", None)  # g.access_token에서 토큰 가져오기
     refresh_token = request.headers.get("RefreshToken", "").split(" ")[1]
 
     try:
-        # 워크스페이스 한국어 이름 생성
-        summary_response = openai.ChatCompletion.create(
+        # GPT 모델을 사용하여 워크스페이스 이름 생성
+        response = client.chat.completions.create(
             model="gpt-4-turbo",
             messages=[
                 {"role": "system",
@@ -78,7 +96,13 @@ def create_workspace(current_user, user_message, ai_reply):
                 {"role": "assistant", "content": ai_reply},
             ]
         )
-        workspace_name = summary_response.choices[0].message["content"].strip()
+        workspace_name_first = response.choices[0].message.content.strip()
+        if not workspace_name_first:
+            raise ValueError("AI가 워크스페이스 이름 생성을 실패하였습니다.")
+
+    except openai.OpenAIError as e:
+        log.error(f"OpenAI API 호출 중 오류: {e}")
+        raise Exception("AI를 사용한 워크스페이스 이름 생성 실패")
     except Exception as e:
         log.error(f"워크스페이스 이름 생성 실패: {e}")
         raise Exception("Workspace name generation failed.")
@@ -88,18 +112,20 @@ def create_workspace(current_user, user_message, ai_reply):
         'Authorization': f'Bearer {token}',
         'RefreshToken': f'Bearer {refresh_token}'  # RefreshToken 추가
     }
-    # 스프링부트의 /api/workspace/create는 @RequestParam으로 데이터를 받으므로,
-    # Flask에서 데이터를 URL 파라미터로 형식으로 전송해야 한다. (JSON 형식 X)
-    # workspace_data = {"memUuid": current_user, "workspaceName": workspace_name}
 
     params = {
         'memUuid': current_user,  # memUuid를 URL 파라미터로 전달
-        'workspaceName': workspace_name  # 워크스페이스 이름
+        'workspaceName': workspace_name_first  # 워크스페이스 이름
     }
+
     try:
         response = requests.post(f"{SPRING_BOOT_API_URL}/api/workspace/create", params=params, headers=headers)
         if response.status_code == 201:
             workspace_id = response.json().get("data", {}).get("workspaceId")
+
+            # **채팅 세션 시작 호출**
+            start_chat_session(workspace_id, current_user, headers)
+
             return workspace_id
         else:
             log.error(f"Workspace creation failed: {response.text}")
@@ -119,6 +145,21 @@ def create_workspace(current_user, user_message, ai_reply):
 #     response.headers["Access-Control-Allow-Credentials"] = "true"
 #     return response
 
+# 세션 메시지 수 업데이트
+def update_chat_session(workspace_id, headers):
+    try:
+        log.info(f"세션 메시지 업데이트 요청: workspaceId={workspace_id}, headers={headers}")
+        response = requests.patch(
+            f"{SPRING_BOOT_API_URL}/api/session/update-messages",
+            params={"workspaceId": workspace_id},
+            headers=headers
+        )
+        log.info(f"Spring Boot 응답: {response.status_code}, {response.text}")
+        if response.status_code != 200:
+            log.error(f"채팅 세션 업데이트 실패: {response.text}")
+    except Exception as e:
+        log.error(f"채팅 세션 업데이트 에러: {e}")
+
 
 def register_routes(app):
     # Chat 엔드포인트
@@ -134,18 +175,22 @@ def register_routes(app):
             return response, 200
         elif request.method == "POST":
             data = request.json
-            # 갱신된 Access Token 가져오기
+            # 갱신된 Access Token, RefreshToken 가져오기
             token = g.get("access_token", None)
+            refresh_token = g.get("refresh_token", None)
 
             # RefreshToken 헤더 가져오기
-            refresh_token_header = request.headers.get('RefreshToken', '')
-            refresh_token = refresh_token_header.split(' ')[1] if 'Bearer ' in refresh_token_header else None
+            # refresh_token_header = request.headers.get('RefreshToken', '')
+            # refresh_token = refresh_token_header.split(' ')[1] if 'Bearer ' in refresh_token_header else None
 
             if not token or not refresh_token:
                 return jsonify({"error": "Missing accessToken or refreshToken."}), 401
 
             user_message = request.json.get("message")
             create_workspace_flag = request.json.get("createWorkspace", False)  # 플래그 확인
+            existing_workspace_id = request.json.get("workspaceId")  # 선택한 워크스페이스ID
+            workspace_id = None  # 초기화
+
             if not user_message:
                 return jsonify({"error": "No message provided."}), 400
 
@@ -153,17 +198,20 @@ def register_routes(app):
             try:
                 if create_workspace_flag:
                     ai_reply = "처음 메시지입니다. AI 응답이 준비되었습니다."
+                    # 워크스페이스 생성
                     workspace_id = create_workspace(current_user, user_message, ai_reply)
                 else:
                     # 기존 워크스페이스 조회
-                    workspace_id = get_workspace(current_user, token)
+                    workspace_id = existing_workspace_id
                     if not workspace_id:
                         return jsonify({"error": "워크스페이스가 없습니다."}), 404
             except Exception as e:
                 log.error(f"Workspace error: {e}")
                 return jsonify({"error": "Workspace creation or retrieval failed"}), 500
 
-            # 사용자 메시지 저장
+
+            # 이후 코드에서 workspaceId를 사용
+            # 사용자 메시지 저장 및 AI 응답 로직은 그대로 유지
             user_msg_id = str(uuid.uuid4())
             sent_at_epoch = int(datetime.now(timezone.utc).timestamp() * 1000)
             user_chat_data = {
@@ -183,8 +231,13 @@ def register_routes(app):
             }
 
             try:
-                response_user = requests.post(f"{SPRING_BOOT_API_URL}/api/chat/save", json=user_chat_data, headers=headers)
-                if response_user.status_code != 201:
+                response_user = requests.post(f"{SPRING_BOOT_API_URL}/api/chat/save", json=user_chat_data,
+                                              headers=headers)
+
+                if response_user.status_code == 201:
+                    # ** 세션 메시지 수 업데이트 **
+                    update_chat_session(user_chat_data["msgWorkspaceId"], headers)
+                else:
                     log.error(f"사용자 메시지 저장 실패: {response_user.text}")
                     return jsonify({"error": "사용자 메시지 저장 실패"}), 500
             except Exception as e:
@@ -193,7 +246,7 @@ def register_routes(app):
 
             # AI 응답 생성
             try:
-                response = openai.ChatCompletion.create(
+                response = client.chat.completions.create(
                     model="gpt-4-turbo",
                     messages=[
                         {"role": "system",
@@ -201,7 +254,10 @@ def register_routes(app):
                         {"role": "user", "content": user_message}
                     ]
                 )
-                ai_reply = response.choices[0].message["content"].strip()
+                # 응답 메시지 추출
+                ai_reply = response.choices[0].message.content.strip()
+                if not ai_reply:
+                    raise ValueError("AI 응답이 비어 있습니다. 다시 시도해주세요.")
             except Exception as e:
                 log.error(f"AI 응답 생성 실패: {e}")
                 return jsonify({"error": "AI 응답 생성 중 오류"}), 500
@@ -222,7 +278,10 @@ def register_routes(app):
             try:
                 response_assistant = requests.post(f"{SPRING_BOOT_API_URL}/api/chat/save", json=assistant_chat_data,
                                                    headers=headers)
-                if response_assistant.status_code != 201:
+                if response_assistant.status_code == 201:
+                    # **세션 메시지 수 업데이트**
+                    update_chat_session(assistant_chat_data["msgWorkspaceId"], headers)
+                else:
                     log.error(f"AI 메시지 저장 실패: {response_assistant.text}")
                     return jsonify({"error": "AI 메시지 저장 실패"}), 500
             except Exception as e:
