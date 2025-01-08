@@ -87,7 +87,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             # 각 테이블의 UUID(pk) 생성
             doc_id = str(uuid.uuid4())
             df_id = str(uuid.uuid4())
-            csv_filename = f"{df_id}_{document_type}.csv"
+            csv_filename = f"{document_type}.csv"
             csv_path = os.path.join("processed", csv_filename)
 
             # CSV 파일 생성
