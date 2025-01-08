@@ -1,3 +1,11 @@
+"""
+작성자: 최은영
+- ****절대 수정하지 마세요****
+- Flask에서 토큰 관리하는 파일
+- Flask에서 토큰 이슈 있으면 팀장한테 물어보세요😎
+"""
+
+
 import base64
 import jwt
 import logging
@@ -33,56 +41,54 @@ def decode_jwt(token):
         return decoded_token
     except jwt.ExpiredSignatureError:
         log.warning("Access Token expired.")
-        return "expired"
+        return {"error": "expired"}
     except jwt.InvalidTokenError:
-        log.error("Invalid JWT token.")
-        return None
+        return {"error": "invalid"}
+
+
+
+
+def prepare_token(token):
+    """Bearer 포맷으로 정리된 토큰 반환"""
+    if not token or not token.strip():
+        raise ValueError("Invalid token: Token is missing or empty")
+    return f"Bearer {token.strip()}"
+
 
 
 def refresh_access_token(refresh_token, access_token):
     """Access Token 갱신"""
+    if not refresh_token or not refresh_token.strip():
+        log.error("Refresh Token is missing or empty. Cannot refresh access token.")
+        return None
+
     refresh_url = f"{SPRING_BOOT_API_URL}/reissue"
     headers = {
-        'Authorization': f'Bearer {access_token}',
-        'RefreshToken': f'Bearer {refresh_token}',  # refresh_token
+        'Authorization': prepare_token(access_token),
+        "RefreshToken": f"Bearer {refresh_token}" if refresh_token.strip() else None,
         'extendLogin': 'true'
     }
+    if not refresh_token.strip():
+        log.warning("RefreshToken is empty. Check why it's not set properly.")
+
     try:
         response = requests.post(refresh_url, headers=headers)
-        log.info(f"/reissue 응답 코드: {response.status_code}, 응답: {response.text}")
         if response.status_code == 200:
-            new_access_token = None
-            new_refresh_token = None
-            log.info(f"갱신된 Access Token: {new_access_token},\n갱신된 Refresh Token: {new_refresh_token}")
-
-            # Authorization 헤더 확인 및 처리
             auth_header = response.headers.get("Authorization", "")
+            # Authorization 헤더 확인 및 처리
             if auth_header.startswith("Bearer "):
-                new_access_token = auth_header.split(" ")[1]
-            else:
-                new_access_token = f"Bearer {auth_header}"
-
-            # RefreshToken 헤더 확인 및 처리
-            refresh_header = response.headers.get("RefreshToken", "")
-            if refresh_header.startswith("Bearer "):
-                new_refresh_token = refresh_header.split(" ")[1]
-            else:
-                new_refresh_token = f"Bearer {refresh_header}"
-
-            if new_access_token and new_refresh_token:
-                log.info(f"갱신된 Access Token: {new_access_token},\n갱신된 Refresh Token: {new_refresh_token}")
-                return new_access_token, new_refresh_token
-            else:
-                log.error("갱신된 토큰을 가져오는 데 실패했습니다.")
-                return None, None
+                return auth_header.split(" ")[1]
+            log.error("Reissue response does not contain a valid Authorization header.")
+        else:
+            log.error(f"Failed to refresh token. Response: {response.text}")
     except requests.RequestException as e:
         log.error(f"Error refreshing Access Token: {e}")
-        return None, None
+
+    return None
 
 
 def token_required(f):
     """JWT 인증 데코레이터"""
-
     @wraps(f)
     def decorated(*args, **kwargs):
         # OPTIONS 요청은 인증 없이 통과
@@ -90,52 +96,48 @@ def token_required(f):
             return f(*args, **kwargs)
 
         # Authorization 및 RefreshToken 헤더 가져오기
-        token = request.headers.get('Authorization', '').replace("Bearer ", "")
-        refresh_token = request.headers.get("RefreshToken", "").replace("Bearer ", "")
+        access_token = request.headers.get('Authorization', '').replace("Bearer ", "")
+        refresh_token = request.headers.get("RefreshToken", '').replace("Bearer ", "")
 
-        log.info(f"Received Tokens - Access Token: {token}, \n Refresh Token: {refresh_token}")
+        log.info(f"Received Tokens - Access Token: {access_token}, Refresh Token: {refresh_token}")
 
         # 토큰 유효성 검사
-        if not token:
+        if not access_token:
             return jsonify({'message': 'Access token is missing!'}), 401
         if not refresh_token:
+            log.warning("Refresh token is missing or empty!")
             return jsonify({'message': 'Refresh token is missing!'}), 401
 
         try:
-            # JWT 디코드
-            data = decode_jwt(token)
-            log.info(f"갱신되기 전 Access Token 상태: {data if data else '유효하지 않음'}")
+            # Access Token 디코드
+            data = decode_jwt(access_token)
 
-            # Access Token이 만료된 경우
-            if data == "expired":
-                log.info("Access Token이 만료되었습니다. Refresh Token으로 갱신을 시도합니다.")
-                new_access_token, new_refresh_token = refresh_access_token(refresh_token, token)
-                if not new_access_token or not new_refresh_token:
-                    raise Exception("Failed to refresh Access Token")
+            # 오류 반환 처리
+            if "error" in data:
+                if data["error"] == "expired":
+                    log.info("Access Token이 만료되었습니다. Refresh Token으로 갱신을 시도합니다.")
+                    new_access_token = refresh_access_token(refresh_token, access_token)
+                    if not new_access_token:
+                        return jsonify({'message': 'Failed to refresh Access Token!'}), 401
+                    g.access_token = new_access_token
 
-                # 갱신된 토큰 저장
-                g.access_token = new_access_token
-                g.refresh_token = new_refresh_token
-
-                # 갱신된 토큰 재검증
-                data = decode_jwt(new_access_token)
-                log.info(f"갱신된 Access Token 상태: {data if data else '유효하지 않음'}")
-                log.info(f"갱신된 g.Access Tokenm g.Refresh Token:\n{g.access_token}, \nRefresh Token: {g.refresh_token}")
-                if not data:
-                    raise Exception("Invalid refreshed token")
+                    # 갱신된 Access Token으로 다시 디코딩
+                    data = decode_jwt(new_access_token)
+                    if "error" in data:
+                        return jsonify({'message': 'Invalid Access Token after refresh!'}), 401
+                else:
+                    return jsonify({'message': 'Invalid Access Token!'}), 401
             else:
-                log.info("Access Token이 유효합니다.")
+                g.access_token = access_token
 
-                # 기존 Access Token 사용
-                g.access_token = token
-                g.refresh_token = refresh_token
-
+            g.refresh_token = refresh_token
             # 사용자 정보 추출
             member = data.get("member")
             log.info(f"Decoded member info: {member}")
             if not member or "memUUID" not in member:
                 log.error("Invalid member information in token.")
-                raise Exception("Missing member information")
+                return jsonify({'message': 'Invalid member information!'}), 401
+
             current_user = member["memUUID"]
         except Exception as e:
             log.error(f"Token validation error: {e}")

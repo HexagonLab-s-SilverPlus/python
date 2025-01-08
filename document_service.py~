@@ -8,8 +8,8 @@ import requests
 import uuid
 from flask_cors import CORS
 from datetime import datetime
-import asyncio
 from openai import OpenAI
+import pytz
 
 # NAS 공유 폴더 접근
 FTP_SERVER = "ktj0514.synology.me"
@@ -98,8 +98,12 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
                     writer.writerow([key, value])
             log.info(f"CSV 파일 생성 완료: {csv_path}")
 
-            # 현재 시간 가져오기
-            currnet_time = datetime.now().isoformat()  # ISO 8601 포맷으로 변환
+            # 한국 시간대로 현재 시간 가져오기
+            korea_timezone = pytz.timezone('Asia/Seoul')
+            current_time_korea = datetime.now(korea_timezone)
+
+            # ISO 8601 포맷으로 변환
+            current_time_iso = current_time_korea.isoformat()
 
             # DOCUMENT 저장
             document_id = str(uuid.uuid4())
@@ -107,7 +111,6 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
                 "docId": doc_id,
                 "docType": document_type,
                 "docCompletedAt": currnet_time,  # 현재 시간 또는 동적 값 사용
-                "isApproved": None,
                 "writtenBy": current_user_uuid,  # 로그인한 사용자의 UUID
                 "approvedAt": None,
                 "approvedBy": None
@@ -121,7 +124,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
 
             headers = {
                 "Authorization": f"Bearer {access_token}",
-                "RefreshToken": refresh_token
+                "RefreshToken":  f"Bearer {refresh_token}"
             }
 
             log.info(f"***********헤더 : {headers}")
