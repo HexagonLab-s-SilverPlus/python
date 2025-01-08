@@ -197,12 +197,18 @@ def insertEMG(memUUID, sessId):
 
 def updateEMG(uuid):
     print(uuid)
+
+    # KST (Korea Standard Time) 시간대 객체 생성
+    kst = pytz.timezone('Asia/Seoul')
+    # 현재 KST 시간 가져오기
+    EMG_CANCLE_AT = datetime.now(kst)
+
     conn = dbtemp.connect()
     cursor = conn.cursor()  # db 연결 정보로 커서 객체를 생성함
-    query = f"update emergency_log set EMG_CANCEL = 'Y' where EMG_LOG_ID = '{uuid}'"
-
+    query = f"update emergency_log set EMG_CANCEL = :1, EMG_CANCLE_AT = :2 where EMG_LOG_ID = :3"
+    tp_value = ("Y", EMG_CANCLE_AT, uuid)
     try:
-        cursor.execute(query)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
+        cursor.execute(query,tp_value)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
         print(cursor.fetchall)
         dbtemp.commit(conn)
     except Exception as e:
