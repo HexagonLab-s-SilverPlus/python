@@ -1,10 +1,8 @@
 ﻿Key,Value
-applicant_name,ㅇㅇㅇ
-relationship_to_patient,본인
-patient_name,채민여
-patient_social_security_number,000
-medical_condition,JKS.032
-hospital_name,아산병원
-doctor_name,ㅇㅇㅇ
-medical_expenses,000000
-financial_status,000000
+applicant_name,최노인
+applicant_social_security_number,000000
+applicant_address,제주도
+applicant_contact_number,010-7894-7894
+medical_condition,좋음
+name_of_hospital,아산병원
+hospital_address,서울시 용산구
