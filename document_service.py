@@ -8,7 +8,6 @@ import requests
 import uuid
 from flask_cors import CORS
 from datetime import datetime
-import asyncio
 from openai import OpenAI
 
 # NAS 공유 폴더 접근
