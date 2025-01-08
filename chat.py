@@ -9,6 +9,7 @@ import logging
 from flask import Blueprint
 from flask_cors import CORS
 from openai import OpenAI
+from sentiment_analysis import analyze_sentiment  # 감정 분석 함수 import
 
 chat_blueprint = Blueprint("chat", __name__)
 CORS(chat_blueprint,
@@ -247,11 +248,15 @@ def register_routes(app):
 
             # AI 응답 생성
             try:
+                # 감정 분석
+                emotion = analyze_sentiment(user_message)  # 입력된 메시지에 대해 감정 분석 수행
+
                 response = client.chat.completions.create(
                     model="gpt-4-turbo",
                     messages=[
                         {"role": "system",
-                         "content": "당신은 친절하고 공감 능력이 뛰어난 AI 비서입니다. 대화 상대가 어르신이기 때문에 항상 공손하고 따뜻한 한국어로만 대답하세요."},
+                         "content": "당신은 친절하고 공감 능력이 뛰어난 AI 비서입니다. 대화 상대가 어르신이기 때문에 항상 공손하고 따뜻한 한국어로만 대답하세요."
+                                    f"사용자의 감정은 '{emotion}'입니다. 이 감정을 고려하여 답변을 작성하세요."},
                         {"role": "user", "content": user_message}
                     ]
                 )
