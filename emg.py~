@@ -46,9 +46,6 @@ def register_routes(app) :
         print("memUUID : " + memUUID)
         print("sessId : " + sessId)
 
-        print(f"image_data_list: {image_data_list}")
-
-
         if not image_data_list:
             return jsonify({'message': '이미지가 제공되지 않았습니다.'}), 400
 
