@@ -5,10 +5,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image
-from docx.shared import Length
-from exceptiongroup import catch
 from flask import request, jsonify, Flask
-import time
 import dbConnectTemplate as dbtemp
 import uuid
 from datetime import datetime
