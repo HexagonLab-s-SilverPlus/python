@@ -5,10 +5,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image
-from docx.shared import Length
-from exceptiongroup import catch
 from flask import request, jsonify, Flask
-import time
 import dbConnectTemplate as dbtemp
 import uuid
 from datetime import datetime
@@ -45,9 +42,6 @@ def register_routes(app) :
         sessId = data.get('sessId')
         print("memUUID : " + memUUID)
         print("sessId : " + sessId)
-
-        print(f"image_data_list: {image_data_list}")
-
 
         if not image_data_list:
             return jsonify({'message': '이미지가 제공되지 않았습니다.'}), 400
