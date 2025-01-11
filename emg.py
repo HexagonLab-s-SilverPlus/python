@@ -136,7 +136,6 @@ def probabilityEMG(array, memUUID, sessId):
         print(f"False Count : {true_count}")
         if true_ratio >= EMG_PROB:
             emgUUID = insertEMG(memUUID, sessId)
-            # make_call()
             print("위급 상황입니다.")
             return "emg", emgUUID
         else:
@@ -212,6 +211,7 @@ def updateEMG(uuid):
         cursor.execute(query,tp_value)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
         print(cursor.fetchall)
         dbtemp.commit(conn)
+        # make_call()
     except Exception as e:
         dbtemp.rollback(conn)
         print(f"rollback error: {e}")
