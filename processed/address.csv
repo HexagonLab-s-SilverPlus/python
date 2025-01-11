@@ -1,7 +1,7 @@
 ﻿Key,Value
-previous_address,q
-new_address,w
-moved_date,e
-house_owner,v
-house_owner_relation,f
-resident_name,q
+resident_name,임서둘
+resident_birthday,2025/1/10
+previous_address,광주일껄
+new_address,서울일껄
+move_in_date,1/10
+relationship_to_head_of_household,본인

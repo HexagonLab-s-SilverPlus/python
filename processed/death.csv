@@ -1,6 +1,8 @@
 ﻿Key,Value
-dead_person_personal_info,ㅇㅇㅇ
-dead_person_death_info,ㅁㄹ
-reporter_info,ㅁㄹ
-relationship_with_deceased,ㅁㄹ
-funeral_home_info,ㅁㄹ
+deceased_identity,임서일
+deceased_address,서울특별시 서초구 서초동 어딘가일껄?
+death_date,2025년 1월 10일이야
+death_place,강남역
+death_cause,심장마비
+reporter_identity,임서둘
+reporter_address,서울?
