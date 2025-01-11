@@ -105,6 +105,10 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
             # ISO 8601 포맷으로 변환
             current_time_iso = current_time_korea.isoformat()
 
+
+            mgr_uuid = g.get("memUUIDMgr", "")
+            print(f"담당자 uuid: {mgr_uuid}")
+
             # DOCUMENT 저장
             document_id = str(uuid.uuid4())
             document_payload = {
@@ -113,7 +117,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
                 "docCompletedAt": current_time_iso,  # 현재 시간 또는 동적 값 사용
                 "writtenBy": current_user_uuid,  # 로그인한 사용자의 UUID
                 "approvedAt": None,
-                "approvedBy": None
+                "approvedBy": mgr_uuid
             }
 
             # Access Token 및 Refresh Token

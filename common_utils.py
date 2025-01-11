@@ -133,6 +133,8 @@ def token_required(f):
             g.refresh_token = refresh_token
             # 사용자 정보 추출
             member = data.get("member")
+            print("담당자 uuid있음? : ",member["memUUIDMgr"])
+            g.memUUIDMgr = member["memUUIDMgr"]
             log.info(f"Decoded member info: {member}")
             if not member or "memUUID" not in member:
                 log.error("Invalid member information in token.")
