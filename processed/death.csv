@@ -1,6 +1,5 @@
 ﻿Key,Value
-dead_person_personal_info,ㅇㅇㅇ
-dead_person_death_info,ㅁㄹ
-reporter_info,ㅁㄹ
-relationship_with_deceased,ㅁㄹ
-funeral_home_info,ㅁㄹ
+deceased_personal_info,ㅇㅇ
+reporter_info,ㄴㅇㅇㅇ
+deceased_family_info,ㄴㅇㄹㅇㄹ
+death_cause,ㅂㅂ

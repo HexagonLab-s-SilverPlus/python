@@ -301,7 +301,7 @@ def register_routes(app):
                 log.error(f"AI 메시지 저장 중 오류: {e}")
                 return jsonify({"error": f"AI 메시지 저장 중 오류: {e}"}), 500
 
-            return jsonify({"reply": ai_reply, "audioBase64": audio_base64, "workspaceId": workspace_id}), 200
+            return jsonify({"reply": ai_reply, "audioBase64": audio_url, "workspaceId": workspace_id}), 200
 
 
 
