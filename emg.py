@@ -89,9 +89,9 @@ def register_routes(app) :
 
         cv2.destroyAllWindows()
         print(array_EMG)
-        isEMG, emgUUID = probabilityEMG(array_EMG, memUUID, sessId)
+        isEMG = probabilityEMG(array_EMG, memUUID, sessId)
 
-        return jsonify({"emgMSG": isEMG, "emgUUID": emgUUID}), 200
+        return jsonify({"emgMSG": isEMG, "emgUUID": memUUID}), 200
 
     @app.route('/emg/end', methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
     def emg_end():
@@ -137,10 +137,10 @@ def probabilityEMG(array, memUUID, sessId):
         if true_ratio >= EMG_PROB:
             emgUUID = insertEMG(memUUID, sessId)
             print("위급 상황입니다.")
-            return "emg", emgUUID
+            return "emg"
         else:
             print("정상입니다.")
-            return "normal", None
+            return "normal"
     else:
         print("모션 기록이 없습니다.")
 def insertEMG(memUUID, sessId):
@@ -211,7 +211,7 @@ def updateEMG(uuid):
         cursor.execute(query,tp_value)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
         print(cursor.fetchall)
         dbtemp.commit(conn)
-        make_call()
+        # make_call()
     except Exception as e:
         dbtemp.rollback(conn)
         print(f"rollback error: {e}")
@@ -221,12 +221,12 @@ def updateEMG(uuid):
 
 
 def make_call():
+    print("전화와 문자를 보냈습니다.")
     call = client.calls.create(
         twiml="<Response><Say>The current guardian is in danger</Say></Response>",
         to="+821052928302",
         from_="+12298087476",
     )
-
     messages = client.messages.create(
         to="+821052928302",
         from_="+12298087476",
