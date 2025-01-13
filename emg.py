@@ -211,7 +211,7 @@ def updateEMG(uuid):
         cursor.execute(query,tp_value)  # 쿼리문을 db로 전송하고 실행한 결과를 커서가 받음
         print(cursor.fetchall)
         dbtemp.commit(conn)
-        # make_call()
+        make_call()
     except Exception as e:
         dbtemp.rollback(conn)
         print(f"rollback error: {e}")
