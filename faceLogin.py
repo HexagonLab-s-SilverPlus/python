@@ -45,7 +45,7 @@ def fetch_all_images_from_ftp():
     finally:
         ftputility.disconnect()
 
-def compare_face_with_all_profiles(camera_frame, profile_images, threshold_override=0.40):
+def compare_face_with_all_profiles(camera_frame, profile_images, threshold_override=0.60):
     best_match = None
     best_distance = float('inf')
     for file_name, profile_img in profile_images:
