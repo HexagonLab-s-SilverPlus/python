@@ -53,7 +53,7 @@ JSON 형식 외에는 추가적인 설명을 포함하지 마세요.
         try:
             # API 호출
             response = client.chat.completions.create(
-                model="gpt-4",  # 모델 이름 (필요에 따라 수정)
+                model="gpt-4o-mini",  # 모델 이름 (필요에 따라 수정)
                 messages=[
                     {"role": "system", "content": "너는 한국 정부 문서 작성의 전문가입니다."},
                     {"role": "user", "content": prompt}

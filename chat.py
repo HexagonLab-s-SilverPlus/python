@@ -3,8 +3,10 @@ from io import BytesIO
 import openai
 import os
 import uuid
+import threading
+import json
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify, app
+from flask import Blueprint, request, jsonify, app, Response
 from common_utils import token_required, log, g
 import requests
 import logging
@@ -91,7 +93,7 @@ def create_workspace(current_user, user_message, ai_reply):
     try:
         # GPT 모델을 사용하여 워크스페이스 이름 생성
         response = client.chat.completions.create(
-            model="gpt-4-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system",
                  "content": "다음 사용자 메시지와 AI 응답을 바탕으로 간결한 한국어 워크스페이스 이름을 생성하세요."},
@@ -165,7 +167,179 @@ def update_chat_session(workspace_id, headers):
 
 
 def register_routes(app):
-    # Chat 엔드포인트
+    # Background message saving function
+    def save_message_background(api_url, chat_data, headers, workspace_id):
+        """백그라운드에서 메시지를 저장하는 함수"""
+        try:
+            response = requests.post(f"{api_url}/api/chat/save", json=chat_data, headers=headers)
+            if response.status_code == 201:
+                update_chat_session(workspace_id, headers)
+            else:
+                log.error(f"메시지 저장 실패: {response.text}")
+        except Exception as e:
+            log.error(f"메시지 저장 중 오류: {e}")
+
+    # TTS 엔드포인트 - 별도로 분리하여 React에서 텍스트 표시 후 TTS 로드 가능
+    @app.route("/chat/tts", methods=["POST", "OPTIONS"])
+    @token_required
+    def chat_tts(current_user=None):
+        """TTS 생성 엔드포인트 - 텍스트를 받아 음성 생성"""
+        if request.method == "OPTIONS":
+            response = jsonify({"status": "OK"})
+            response.headers.add("Access-Control-Allow-Origin", "http://localhost:3000")
+            response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            response.headers.add("Access-Control-Allow-Headers", "Authorization, RefreshToken, Content-Type")
+            response.headers.add("Access-Control-Allow-Credentials", "true")
+            return response, 200
+
+        text = request.json.get("text")
+        if not text:
+            return jsonify({"error": "No text provided."}), 400
+
+        try:
+            audio_base64 = generate_tts(text)
+            return jsonify({"audioBase64": audio_base64}), 200
+        except Exception as e:
+            log.error(f"TTS 생성 실패: {e}")
+            return jsonify({"error": "TTS 생성 중 오류"}), 500
+
+    # 스트리밍 Chat 엔드포인트
+    @app.route("/chat/stream", methods=["POST", "OPTIONS"])
+    @token_required
+    def chat_stream(current_user=None):
+        """스트리밍 방식의 Chat 엔드포인트 - 실시간으로 응답 전송"""
+        if request.method == "OPTIONS":
+            response = jsonify({"status": "OK"})
+            response.headers.add("Access-Control-Allow-Origin", "http://localhost:3000")
+            response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            response.headers.add("Access-Control-Allow-Headers", "Authorization, RefreshToken, Content-Type")
+            response.headers.add("Access-Control-Allow-Credentials", "true")
+            return response, 200
+
+        data = request.json
+        token = g.get("access_token", None)
+        refresh_token = g.get("refresh_token", None)
+
+        if not token or not refresh_token:
+            return jsonify({"error": "Missing accessToken or refreshToken."}), 401
+
+        user_message = data.get("message")
+        create_workspace_flag = data.get("createWorkspace", False)
+        existing_workspace_id = data.get("workspaceId")
+        workspace_id = None
+
+        if not user_message:
+            return jsonify({"error": "No message provided."}), 400
+
+        # 워크스페이스 처리
+        try:
+            if create_workspace_flag:
+                ai_reply_temp = "처음 메시지입니다. AI 응답이 준비되었습니다."
+                workspace_id = create_workspace(current_user, user_message, ai_reply_temp)
+            else:
+                workspace_id = existing_workspace_id
+                if not workspace_id:
+                    return jsonify({"error": "워크스페이스가 없습니다."}), 404
+        except Exception as e:
+            log.error(f"Workspace error: {e}")
+            return jsonify({"error": "Workspace creation or retrieval failed"}), 500
+
+        # 사용자 메시지 데이터 준비
+        user_msg_id = str(uuid.uuid4())
+        sent_at_epoch = int(datetime.now(timezone.utc).timestamp() * 1000)
+        user_chat_data = {
+            "msgId": user_msg_id,
+            "msgSenderRole": "USER",
+            "msgContent": user_message,
+            "msgSentAt": sent_at_epoch,
+            "msgSenderUUID": current_user,
+            "parentMsgId": None,
+            "msgType": "T",
+            "msgWorkspaceId": workspace_id
+        }
+
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'RefreshToken': f'Bearer {refresh_token}'
+        }
+
+        # 사용자 메시지 백그라운드 저장
+        user_save_thread = threading.Thread(
+            target=save_message_background,
+            args=(SPRING_BOOT_API_URL, user_chat_data, headers, workspace_id),
+            daemon=True
+        )
+        user_save_thread.start()
+
+        # 감정 분석
+        try:
+            emotion = analyze_sentiment(user_message)
+        except Exception as e:
+            log.error(f"감정 분석 실패: {e}")
+            emotion = "중립"
+
+        def generate_stream():
+            """스트리밍 응답 생성기"""
+            full_response = []
+            try:
+                # 스트리밍으로 GPT 호출
+                stream_response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system",
+                         "content": "당신은 친절하고 공감 능력이 뛰어난 AI 비서입니다. 대화 상대가 어르신이기 때문에 항상 공손하고 따뜻한 한국어로만 대답하세요."
+                                    f"사용자의 감정은 '{emotion}'입니다. 이 감정을 고려하여 답변을 작성하세요."},
+                        {"role": "user", "content": user_message}
+                    ],
+                    stream=True
+                )
+
+                # 첫 번째로 workspace_id 전송
+                yield f"data: {{\"type\": \"workspace\", \"workspaceId\": \"{workspace_id}\"}}\n\n"
+
+                for chunk in stream_response:
+                    if chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        full_response.append(content)
+                        # SSE 형식으로 전송
+                        yield f"data: {{\"type\": \"content\", \"content\": {json.dumps(content)}}}\n\n"
+
+                # 완료 신호 전송
+                yield f"data: {{\"type\": \"done\"}}\n\n"
+
+                # AI 메시지 백그라운드 저장
+                ai_reply = "".join(full_response)
+                if ai_reply:
+                    assistant_msg_id = str(uuid.uuid4())
+                    assistant_chat_data = {
+                        "msgId": assistant_msg_id,
+                        "msgSenderRole": "AI",
+                        "msgContent": ai_reply,
+                        "msgSentAt": sent_at_epoch,
+                        "msgSenderUUID": "ai-uuid-1234-5678-90ab-cdef12345678",
+                        "parentMsgId": user_msg_id,
+                        "msgType": "T",
+                        "msgWorkspaceId": workspace_id
+                    }
+                    ai_save_thread = threading.Thread(
+                        target=save_message_background,
+                        args=(SPRING_BOOT_API_URL, assistant_chat_data, headers, workspace_id),
+                        daemon=True
+                    )
+                    ai_save_thread.start()
+
+            except Exception as e:
+                log.error(f"스트리밍 응답 생성 실패: {e}")
+                yield f"data: {{\"type\": \"error\", \"message\": {json.dumps(str(e))}}}\n\n"
+
+        response = Response(generate_stream(), mimetype='text/event-stream')
+        response.headers.add("Access-Control-Allow-Origin", "http://localhost:3000")
+        response.headers.add("Access-Control-Allow-Credentials", "true")
+        response.headers.add("Cache-Control", "no-cache")
+        response.headers.add("X-Accel-Buffering", "no")
+        return response
+
+    # 기존 Chat 엔드포인트 (비스트리밍 - 하위 호환성 유지, TTS 분리 및 백그라운드 저장 적용)
     @app.route("/chat", methods=["POST", "OPTIONS"])
     @token_required
     def chat(current_user=None):
@@ -182,18 +356,16 @@ def register_routes(app):
             token = g.get("access_token", None)
             refresh_token = g.get("refresh_token", None)
 
-            # RefreshToken 헤더 가져오기
-            # refresh_token_header = request.headers.get('RefreshToken', '')
-            # refresh_token = refresh_token_header.split(' ')[1] if 'Bearer ' in refresh_token_header else None
-
             if not token or not refresh_token:
                 return jsonify({"error": "Missing accessToken or refreshToken."}), 401
 
             user_message = request.json.get("message")
-            create_workspace_flag = request.json.get("createWorkspace", False)  # 플래그 확인
-            existing_workspace_id = request.json.get("workspaceId")  # 선택한 워크스페이스ID
+            create_workspace_flag = request.json.get("createWorkspace", False)
+            existing_workspace_id = request.json.get("workspaceId")
+            # TTS 생성 여부 (기본값 False - 클라이언트가 별도로 /chat/tts 호출)
+            include_tts = request.json.get("includeTts", False)
             log.info(f"리액트에서 받은 워크스페이스ID: {existing_workspace_id}")
-            workspace_id = None  # 초기화
+            workspace_id = None
 
             if not user_message:
                 return jsonify({"error": "No message provided."}), 400
@@ -202,10 +374,8 @@ def register_routes(app):
             try:
                 if create_workspace_flag:
                     ai_reply = "처음 메시지입니다. AI 응답이 준비되었습니다."
-                    # 워크스페이스 생성
                     workspace_id = create_workspace(current_user, user_message, ai_reply)
                 else:
-                    # 기존 워크스페이스 조회
                     workspace_id = existing_workspace_id
                     if not workspace_id:
                         return jsonify({"error": "워크스페이스가 없습니다."}), 404
@@ -213,9 +383,7 @@ def register_routes(app):
                 log.error(f"Workspace error: {e}")
                 return jsonify({"error": "Workspace creation or retrieval failed"}), 500
 
-
-            # 이후 코드에서 workspaceId를 사용
-            # 사용자 메시지 저장 및 AI 응답 로직은 그대로 유지
+            # 사용자 메시지 데이터 준비
             user_msg_id = str(uuid.uuid4())
             sent_at_epoch = int(datetime.now(timezone.utc).timestamp() * 1000)
             user_chat_data = {
@@ -230,31 +398,25 @@ def register_routes(app):
             }
 
             headers = {
-                'Authorization': f'Bearer {token}',  # g.access_token 사용
-                'RefreshToken': f'Bearer {refresh_token}'  # RefreshToken 추가
+                'Authorization': f'Bearer {token}',
+                'RefreshToken': f'Bearer {refresh_token}'
             }
 
-            try:
-                response_user = requests.post(f"{SPRING_BOOT_API_URL}/api/chat/save", json=user_chat_data,
-                                              headers=headers)
-
-                if response_user.status_code == 201:
-                    # ** 세션 메시지 수 업데이트 **
-                    update_chat_session(user_chat_data["msgWorkspaceId"], headers)
-                else:
-                    log.error(f"사용자 메시지 저장 실패: {response_user.text}")
-                    return jsonify({"error": "사용자 메시지 저장 실패"}), 500
-            except Exception as e:
-                log.error(f"사용자 메시지 저장 중 오류: {e}")
-                return jsonify({"error": f"사용자 메시지 저장 중 오류: {e}"}), 500
+            # 사용자 메시지 백그라운드 저장
+            user_save_thread = threading.Thread(
+                target=save_message_background,
+                args=(SPRING_BOOT_API_URL, user_chat_data, headers, workspace_id),
+                daemon=True
+            )
+            user_save_thread.start()
 
             # AI 응답 생성
             try:
                 # 감정 분석 및 AI 응답 생성
-                emotion = analyze_sentiment(user_message)  # 입력된 메시지에 대해 감정 분석 수행
+                emotion = analyze_sentiment(user_message)
 
                 response = client.chat.completions.create(
-                    model="gpt-4-turbo",
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system",
                          "content": "당신은 친절하고 공감 능력이 뛰어난 AI 비서입니다. 대화 상대가 어르신이기 때문에 항상 공손하고 따뜻한 한국어로만 대답하세요."
@@ -262,20 +424,15 @@ def register_routes(app):
                         {"role": "user", "content": user_message}
                     ]
                 )
-                # 응답 메시지 추출
                 ai_reply = response.choices[0].message.content.strip()
                 if not ai_reply:
                     raise ValueError("AI 응답이 비어 있습니다. 다시 시도해주세요.")
 
-                # TTS 생성
-                audio_base64 = generate_tts(ai_reply)
             except Exception as e:
-                log.error(f"AI 응답 또는 TTS 생성 실패: {e}")
+                log.error(f"AI 응답 생성 실패: {e}")
                 return jsonify({"error": "AI 응답 생성 중 오류"}), 500
 
-
-
-            # AI 메시지 저장
+            # AI 메시지 백그라운드 저장
             assistant_msg_id = str(uuid.uuid4())
             assistant_chat_data = {
                 "msgId": assistant_msg_id,
@@ -288,20 +445,25 @@ def register_routes(app):
                 "msgWorkspaceId": workspace_id
             }
 
-            try:
-                response_assistant = requests.post(f"{SPRING_BOOT_API_URL}/api/chat/save", json=assistant_chat_data,
-                                                   headers=headers)
-                if response_assistant.status_code == 201:
-                    # **세션 메시지 수 업데이트**
-                    update_chat_session(assistant_chat_data["msgWorkspaceId"], headers)
-                else:
-                    log.error(f"AI 메시지 저장 실패: {response_assistant.text}")
-                    return jsonify({"error": "AI 메시지 저장 실패"}), 500
-            except Exception as e:
-                log.error(f"AI 메시지 저장 중 오류: {e}")
-                return jsonify({"error": f"AI 메시지 저장 중 오류: {e}"}), 500
+            ai_save_thread = threading.Thread(
+                target=save_message_background,
+                args=(SPRING_BOOT_API_URL, assistant_chat_data, headers, workspace_id),
+                daemon=True
+            )
+            ai_save_thread.start()
 
-            return jsonify({"reply": ai_reply, "audioBase64": audio_base64, "workspaceId": workspace_id}), 200
+            # 응답 구성 (TTS는 선택적으로 포함)
+            response_data = {"reply": ai_reply, "workspaceId": workspace_id}
+
+            if include_tts:
+                try:
+                    audio_base64 = generate_tts(ai_reply)
+                    response_data["audioBase64"] = audio_base64
+                except Exception as e:
+                    log.error(f"TTS 생성 실패: {e}")
+                    # TTS 실패해도 텍스트 응답은 반환
+
+            return jsonify(response_data), 200
 
 
 
