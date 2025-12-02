@@ -4,6 +4,7 @@ import openai
 import os
 import uuid
 import threading
+import json
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, app, Response
 from common_utils import token_required, log, g
@@ -265,7 +266,8 @@ def register_routes(app):
         # 사용자 메시지 백그라운드 저장
         user_save_thread = threading.Thread(
             target=save_message_background,
-            args=(SPRING_BOOT_API_URL, user_chat_data, headers, workspace_id)
+            args=(SPRING_BOOT_API_URL, user_chat_data, headers, workspace_id),
+            daemon=True
         )
         user_save_thread.start()
 
@@ -300,7 +302,6 @@ def register_routes(app):
                         content = chunk.choices[0].delta.content
                         full_response.append(content)
                         # SSE 형식으로 전송
-                        import json
                         yield f"data: {{\"type\": \"content\", \"content\": {json.dumps(content)}}}\n\n"
 
                 # 완료 신호 전송
@@ -322,13 +323,13 @@ def register_routes(app):
                     }
                     ai_save_thread = threading.Thread(
                         target=save_message_background,
-                        args=(SPRING_BOOT_API_URL, assistant_chat_data, headers, workspace_id)
+                        args=(SPRING_BOOT_API_URL, assistant_chat_data, headers, workspace_id),
+                        daemon=True
                     )
                     ai_save_thread.start()
 
             except Exception as e:
                 log.error(f"스트리밍 응답 생성 실패: {e}")
-                import json
                 yield f"data: {{\"type\": \"error\", \"message\": {json.dumps(str(e))}}}\n\n"
 
         response = Response(generate_stream(), mimetype='text/event-stream')
@@ -404,7 +405,8 @@ def register_routes(app):
             # 사용자 메시지 백그라운드 저장
             user_save_thread = threading.Thread(
                 target=save_message_background,
-                args=(SPRING_BOOT_API_URL, user_chat_data, headers, workspace_id)
+                args=(SPRING_BOOT_API_URL, user_chat_data, headers, workspace_id),
+                daemon=True
             )
             user_save_thread.start()
 
@@ -445,7 +447,8 @@ def register_routes(app):
 
             ai_save_thread = threading.Thread(
                 target=save_message_background,
-                args=(SPRING_BOOT_API_URL, assistant_chat_data, headers, workspace_id)
+                args=(SPRING_BOOT_API_URL, assistant_chat_data, headers, workspace_id),
+                daemon=True
             )
             ai_save_thread.start()
 
